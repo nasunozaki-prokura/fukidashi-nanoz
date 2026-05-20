@@ -39,6 +39,13 @@ function setBoardUrl(board) {
   history.replaceState(null, "", url);
 }
 
+function shareUrl() {
+  if (!state.board) return location.href;
+  const url = new URL(location.href);
+  url.searchParams.set("b", state.board.id);
+  return url.toString();
+}
+
 function isOwner() {
   return Boolean(state.board?.isOwner);
 }
@@ -300,8 +307,15 @@ gatherButton.addEventListener("click", async () => {
 });
 
 copyLinkButton.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(location.href);
-  setStatus("共有リンクをコピーしました");
+  const url = shareUrl();
+  try {
+    if (!navigator.clipboard) throw new Error("clipboard unavailable");
+    await navigator.clipboard.writeText(url);
+    setStatus("共有リンクをコピーしました");
+  } catch {
+    prompt("共有リンクをコピーしてください", url);
+    setStatus("共有リンクを表示しました");
+  }
 });
 
 newBoardButton.addEventListener("click", () => {
