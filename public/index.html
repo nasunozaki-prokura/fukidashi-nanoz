@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ふきだし道場</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>ふきだし道場</h1>
+          <p id="status">30日保持の共有ボード</p>
+        </div>
+        <div class="top-actions">
+          <button id="copyLinkButton" class="ghost" type="button">共有</button>
+          <button id="newBoardButton" type="button">新規ボード</button>
+        </div>
+      </header>
+
+      <section id="welcome" class="welcome">
+        <form id="createForm" class="panel">
+          <h2>ボードを作成</h2>
+          <label>
+            ボード名
+            <input name="title" maxlength="40" placeholder="例: 今日の問い">
+          </label>
+          <label>
+            あなたの名前
+            <input name="ownerName" maxlength="24" placeholder="例: 先生">
+          </label>
+          <button type="submit">作成する</button>
+        </form>
+      </section>
+
+      <section id="boardView" class="board-view" hidden>
+        <aside class="sidebar">
+          <div class="identity">
+            <label>
+              表示名
+              <input id="nameInput" maxlength="24" placeholder="匿名">
+            </label>
+          </div>
+          <div class="page-head">
+            <strong>ページ</strong>
+            <button id="addPageButton" class="icon-button" type="button" title="ページ追加">+</button>
+          </div>
+          <div id="pageList" class="page-list"></div>
+          <div id="ownerTools" class="owner-tools" hidden>
+            <label class="check">
+              <input id="lockToggle" type="checkbox">
+              他者の修正をロック
+            </label>
+            <label class="check">
+              <input id="hideToggle" type="checkbox">
+              投稿を一時非表示
+            </label>
+            <button id="gatherButton" class="ghost" type="button">全員集合</button>
+          </div>
+        </aside>
+
+        <div class="workspace">
+          <div class="board-title-row">
+            <h2 id="boardTitle"></h2>
+            <span id="retentionNote"></span>
+          </div>
+          <div id="canvas" class="canvas"></div>
+          <form id="bubbleForm" class="composer">
+            <input name="text" maxlength="180" placeholder="ふきだしを書く">
+            <button type="submit">投稿</button>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <template id="bubbleTemplate">
+      <article class="bubble">
+        <p></p>
+        <footer>
+          <span></span>
+          <button type="button"></button>
+        </footer>
+      </article>
+    </template>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
