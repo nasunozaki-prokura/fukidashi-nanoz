@@ -73,6 +73,11 @@ function setStatus(text) {
   $("#status").textContent = text;
 }
 
+function updateTopActions() {
+  copyLinkButton.hidden = !state.board;
+  newBoardButton.hidden = !state.board || !isOwner();
+}
+
 function daysLeft(createdAt) {
   const elapsed = Date.now() - new Date(createdAt).getTime();
   return Math.max(0, Math.ceil((30 * 24 * 60 * 60 * 1000 - elapsed) / (24 * 60 * 60 * 1000)));
@@ -83,6 +88,7 @@ function render() {
   const page = activePage();
   welcome.hidden = true;
   boardView.hidden = false;
+  updateTopActions();
   $("#boardTitle").textContent = `${state.board.title} / ${page.title}`;
   $("#retentionNote").textContent = `あと約${daysLeft(state.board.createdAt)}日保持`;
   ownerTools.hidden = !isOwner();
@@ -324,8 +330,14 @@ newBoardButton.addEventListener("click", () => {
 });
 
 const initialBoard = boardIdFromUrl();
+updateTopActions();
 if (initialBoard) {
+  welcome.hidden = true;
+  boardView.hidden = true;
+  setStatus("ボードを読み込み中");
   loadBoard(initialBoard).catch(() => {
     setStatus("ボードが見つかりません");
+    welcome.hidden = false;
+    updateTopActions();
   });
 }
