@@ -4,6 +4,7 @@ const state = {
   userId: localStorage.getItem("myfukidashi:userId") || crypto.randomUUID(),
   name: localStorage.getItem("myfukidashi:name") || "",
   ownerKey: localStorage.getItem("myfukidashi:ownerKey") || "",
+  guestMode: new URL(location.href).searchParams.get("guest") === "1",
   pollTimer: null,
   drag: null
 };
@@ -43,6 +44,7 @@ function shareUrl() {
   if (!state.board) return location.href;
   const url = new URL(location.href);
   url.searchParams.set("b", state.board.id);
+  url.searchParams.set("guest", "1");
   return url.toString();
 }
 
@@ -54,7 +56,7 @@ async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: {
       "content-type": "application/json",
-      "x-owner-key": state.ownerKey
+      "x-owner-key": state.guestMode ? "" : state.ownerKey
     },
     ...options,
     body: options.body ? JSON.stringify(options.body) : undefined
@@ -167,7 +169,7 @@ function userBody(extra = {}) {
   return {
     userId: state.userId,
     name: state.name || "匿名",
-    ownerKey: state.ownerKey,
+    ownerKey: state.guestMode ? "" : state.ownerKey,
     ...extra
   };
 }
