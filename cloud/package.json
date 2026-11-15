@@ -2,5 +2,9 @@
   "name": "fukidashi-nanoz-cloud",
   "private": true,
   "type": "module",
-  "scripts": { "build": "node build.mjs", "test": "node --test worker.test.mjs" }
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test worker.test.mjs"
+  },
+  "license": "MIT"
 }
