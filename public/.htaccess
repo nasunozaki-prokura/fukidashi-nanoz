@@ -1,0 +1,9 @@
+Options -Indexes
+RewriteEngine On
+RewriteRule ^api(?:/.*)?$ api.php [QSA,L]
+RewriteRule ^join/[^/]+/?$ api.php [QSA,L]
+RewriteRule ^admin/?$ index.html [L]
+
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>

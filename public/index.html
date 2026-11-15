@@ -3,60 +3,110 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ふきだし道場</title>
+    <title>ドージョーボード</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main class="app">
       <header class="topbar">
         <div>
-          <h1>ふきだし道場</h1>
-          <p id="status">30日保持の共有ボード</p>
+          <h1>ドージョーボード</h1>
+          <p id="status">イベントごとの共有ボード</p>
         </div>
         <div class="top-actions">
-          <button id="copyLinkButton" class="ghost" type="button" hidden>共有</button>
           <button id="newBoardButton" type="button" hidden>新規ボード</button>
         </div>
       </header>
 
       <section id="welcome" class="welcome">
-        <form id="createForm" class="panel">
-          <h2>ボードを作成</h2>
-          <label>
-            ボード名
-            <input name="title" maxlength="40" placeholder="例: 今日の問い">
-          </label>
-          <label>
-            あなたの名前
-            <input name="ownerName" maxlength="24" placeholder="例: 先生">
-          </label>
-          <button type="submit">作成する</button>
-        </form>
+        <div class="welcome-content">
+          <form id="createForm" class="panel">
+            <p class="eyebrow">ADMIN</p>
+            <h2>新しいイベントを作成</h2>
+            <label>
+              イベント名・表題
+              <input name="title" maxlength="60" required placeholder="例: 5月21日">
+            </label>
+            <label>
+              管理者の表示名
+              <input name="ownerName" maxlength="24" required placeholder="例: 先生">
+            </label>
+            <label>
+              公開終了日時（任意）
+              <input name="publishEndsAt" type="datetime-local">
+            </label>
+            <button type="submit">作成する</button>
+            <div id="recentBoards" class="recent-boards" hidden>
+              <h3>作成済みのイベント</h3>
+              <div id="recentBoardList"></div>
+            </div>
+          </form>
+
+          <section class="guide" aria-labelledby="guideTitle">
+            <p class="eyebrow">HOW TO USE</p>
+            <h2 id="guideTitle">ドージョーボードの使い方</h2>
+
+            <div class="guide-step">
+              <span>1</span>
+              <div>
+                <h3>イベントを作成して公開する</h3>
+                <p>管理者がイベントを作成し、「公開URLを生成」を押すと、そのイベント専用の参加URLが発行されます。</p>
+              </div>
+            </div>
+
+            <div class="guide-step">
+              <span>2</span>
+              <div>
+                <h3>イベント専用URLから参加する</h3>
+                <p>生徒には、そのイベント専用のURLを配布します。公開終了後、そのURLはNot Foundになり閲覧できません。</p>
+              </div>
+            </div>
+
+            <div class="guide-step">
+              <span>3</span>
+              <div>
+                <h3>みんなで書き込む</h3>
+                <p>生徒はブラウザから参加し、管理者や他の生徒の書き込みを見ながら、自分のふきだしを投稿できます。</p>
+              </div>
+            </div>
+
+            <div class="guide-note">
+              <strong>書き込みの編集について</strong>
+              <p>名前はブラウザに保存されます。生徒は全員の投稿を見られますが、他の人の書き込みは編集できません。</p>
+            </div>
+          </section>
+        </div>
       </section>
 
       <section id="boardView" class="board-view" hidden>
         <aside class="sidebar">
+          <div id="publishPanel" class="publish-panel" hidden>
+            <div class="sidebar-section-head">
+              <strong>生徒への公開</strong>
+              <span id="publishStatus" class="status-badge">非公開</span>
+            </div>
+            <button id="publishButton" type="button">公開URLを生成</button>
+            <button id="copyLinkButton" type="button" hidden>生徒用URLをコピー</button>
+            <div id="qrPanel" class="qr-panel" hidden>
+              <img id="qrCode" alt="生徒用URLのQRコード">
+              <p>生徒はこのQRコードから参加できます</p>
+            </div>
+          </div>
           <div class="identity">
+            <h3>管理者</h3>
             <label>
               表示名
               <input id="nameInput" maxlength="24" placeholder="匿名">
             </label>
           </div>
-          <div class="page-head">
-            <strong>ページ</strong>
-            <button id="addPageButton" class="icon-button" type="button" title="ページ追加">+</button>
-          </div>
-          <div id="pageList" class="page-list"></div>
           <div id="ownerTools" class="owner-tools" hidden>
-            <label class="check">
-              <input id="lockToggle" type="checkbox">
-              他者の修正をロック
+            <h3>公開期間</h3>
+            <label>
+              公開終了日時
+              <input id="endsAtInput" type="datetime-local">
             </label>
-            <label class="check">
-              <input id="hideToggle" type="checkbox">
-              投稿を一時非表示
-            </label>
-            <button id="gatherButton" class="ghost" type="button">全員集合</button>
+            <button id="saveEndsAtButton" class="ghost" type="button">日時を保存</button>
+            <button id="endEventButton" class="danger" type="button">公開終了</button>
           </div>
         </aside>
 
@@ -78,7 +128,10 @@
       <article class="bubble">
         <p></p>
         <footer>
-          <span></span>
+          <div class="bubble-meta">
+            <strong></strong>
+            <time></time>
+          </div>
           <button type="button"></button>
         </footer>
       </article>

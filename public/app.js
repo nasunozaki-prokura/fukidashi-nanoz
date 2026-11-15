@@ -1,12 +1,32 @@
+const isAdminMode = location.pathname === "/admin" || location.pathname === "/";
+const publicToken = isAdminMode ? "" : location.pathname.match(/^\/join\/([^/]+)$/)?.[1] || "";
+const DEFAULT_PUBLISH_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+const ownerKeys = JSON.parse(localStorage.getItem("myfukidashi:ownerKeys") || "{}");
+const initialUrlBoardId = new URL(location.href).searchParams.get("b");
+const legacyOwnerKey = localStorage.getItem("myfukidashi:ownerKey");
+
+function createClientId() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  if (typeof crypto.getRandomValues === "function") {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+if (initialUrlBoardId && legacyOwnerKey && !ownerKeys[initialUrlBoardId]) {
+  ownerKeys[initialUrlBoardId] = legacyOwnerKey;
+  localStorage.setItem("myfukidashi:ownerKeys", JSON.stringify(ownerKeys));
+}
+
 const state = {
   board: null,
-  currentPageId: null,
-  userId: localStorage.getItem("myfukidashi:userId") || crypto.randomUUID(),
+  userId: localStorage.getItem("myfukidashi:userId") || createClientId(),
   name: localStorage.getItem("myfukidashi:name") || "",
-  ownerKey: localStorage.getItem("myfukidashi:ownerKey") || "",
-  guestMode: new URL(location.href).searchParams.get("guest") === "1",
   pollTimer: null,
-  drag: null
+  drag: null,
+  qrObjectUrl: "",
+  endsAtDirty: false
 };
 
 localStorage.setItem("myfukidashi:userId", state.userId);
@@ -17,35 +37,49 @@ const boardView = $("#boardView");
 const createForm = $("#createForm");
 const canvas = $("#canvas");
 const bubbleForm = $("#bubbleForm");
-const pageList = $("#pageList");
+const bubbleInput = bubbleForm.querySelector("input");
+const bubbleSubmitButton = bubbleForm.querySelector("button");
 const nameInput = $("#nameInput");
 const ownerTools = $("#ownerTools");
-const lockToggle = $("#lockToggle");
-const hideToggle = $("#hideToggle");
-const addPageButton = $("#addPageButton");
-const gatherButton = $("#gatherButton");
+const publishPanel = $("#publishPanel");
+const publishStatus = $("#publishStatus");
 const copyLinkButton = $("#copyLinkButton");
+const publishButton = $("#publishButton");
+const qrPanel = $("#qrPanel");
+const qrCode = $("#qrCode");
 const newBoardButton = $("#newBoardButton");
+const recentBoards = $("#recentBoards");
+const recentBoardList = $("#recentBoardList");
+const endsAtInput = $("#endsAtInput");
+const saveEndsAtButton = $("#saveEndsAtButton");
+const endEventButton = $("#endEventButton");
 
 nameInput.value = state.name;
 
 function boardIdFromUrl() {
-  const url = new URL(location.href);
-  return url.searchParams.get("b");
+  return new URL(location.href).searchParams.get("b");
+}
+
+function ownerKeyFor(boardId = state.board?.id) {
+  return isAdminMode && boardId ? String(ownerKeys[boardId] || "") : "";
+}
+
+function rememberOwner(board) {
+  if (!board?.ownerKey) return;
+  ownerKeys[board.id] = board.ownerKey;
+  localStorage.setItem("myfukidashi:ownerKeys", JSON.stringify(ownerKeys));
 }
 
 function setBoardUrl(board) {
-  const url = new URL(location.href);
+  if (!isAdminMode) return;
+  const url = new URL("/admin", location.origin);
   url.searchParams.set("b", board.id);
   history.replaceState(null, "", url);
 }
 
-function shareUrl() {
-  if (!state.board) return location.href;
-  const url = new URL(location.href);
-  url.searchParams.set("b", state.board.id);
-  url.searchParams.set("guest", "1");
-  return url.toString();
+function studentUrl() {
+  if (!state.board?.publicToken) return "";
+  return new URL(`/join/${state.board.publicToken}`, location.origin).toString();
 }
 
 function isOwner() {
@@ -53,22 +87,28 @@ function isOwner() {
 }
 
 async function api(path, options = {}) {
+  const { ownerKey = ownerKeyFor(), ...fetchOptions } = options;
   const response = await fetch(path, {
     headers: {
       "content-type": "application/json",
-      "x-owner-key": state.guestMode ? "" : state.ownerKey
+      "x-owner-key": ownerKey
     },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined
+    ...fetchOptions,
+    body: fetchOptions.body ? JSON.stringify(fetchOptions.body) : undefined
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "request failed");
   return data;
 }
 
-function activePage() {
-  if (!state.board) return null;
-  return state.board.pages.find((page) => page.id === state.currentPageId) || state.board.pages[0];
+async function fetchWithOwner(path, options = {}) {
+  const { ownerKey = ownerKeyFor(), ...fetchOptions } = options;
+  return fetch(path, {
+    headers: {
+      "x-owner-key": ownerKey
+    },
+    ...fetchOptions
+  });
 }
 
 function setStatus(text) {
@@ -76,92 +116,157 @@ function setStatus(text) {
 }
 
 function updateTopActions() {
-  copyLinkButton.hidden = !state.board;
-  newBoardButton.hidden = !state.board || !isOwner();
+  publishPanel.hidden = !isAdminMode || !isOwner();
+  publishStatus.textContent = state.board?.isPublished ? "公開中" : "非公開";
+  publishStatus.classList.toggle("published", Boolean(state.board?.isPublished));
+  copyLinkButton.hidden = !isAdminMode || !state.board?.isPublished;
+  publishButton.hidden = !isAdminMode || !isOwner() || state.board?.isPublished;
+  qrPanel.hidden = !isAdminMode || !state.board?.isPublished;
+  if (isAdminMode && state.board?.isPublished) {
+    loadQrCode();
+  } else {
+    if (state.qrObjectUrl) URL.revokeObjectURL(state.qrObjectUrl);
+    state.qrObjectUrl = "";
+    qrCode.removeAttribute("src");
+    delete qrCode.dataset.publicToken;
+  }
+  newBoardButton.hidden = !isAdminMode || !state.board;
 }
 
-function daysLeft(createdAt) {
-  const elapsed = Date.now() - new Date(createdAt).getTime();
-  return Math.max(0, Math.ceil((30 * 24 * 60 * 60 * 1000 - elapsed) / (24 * 60 * 60 * 1000)));
+async function loadQrCode() {
+  if (!state.board?.isPublished || qrCode.dataset.publicToken === state.board.publicToken) return;
+  try {
+    if (state.qrObjectUrl) URL.revokeObjectURL(state.qrObjectUrl);
+    const response = await fetchWithOwner(`/api/qr/${state.board.id}`);
+    if (!response.ok) throw new Error("QR request failed");
+    state.qrObjectUrl = URL.createObjectURL(await response.blob());
+    qrCode.src = state.qrObjectUrl;
+    qrCode.dataset.publicToken = state.board.publicToken;
+  } catch {
+    setStatus("QRコードを生成できません");
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function dateTimeLocalValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function isoFromLocalValue(value) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function defaultPublishEndsAt() {
+  return new Date(Date.now() + DEFAULT_PUBLISH_DURATION_MS).toISOString();
+}
+
+function showNotFound() {
+  document.title = "現在このページは公開されていません";
+  const main = document.createElement("main");
+  main.className = "unavailable";
+  const title = document.createElement("h1");
+  title.textContent = "現在このページは公開されていません";
+  const message = document.createElement("p");
+  message.textContent = "This page is currently unavailable.";
+  main.append(title, message);
+  document.body.replaceChildren(main);
 }
 
 function render() {
   if (!state.board) return;
-  const page = activePage();
   welcome.hidden = true;
   boardView.hidden = false;
   updateTopActions();
-  $("#boardTitle").textContent = `${state.board.title} / ${page.title}`;
-  $("#retentionNote").textContent = `あと約${daysLeft(state.board.createdAt)}日保持`;
+  $("#boardTitle").textContent = state.board.title;
+  $("#retentionNote").textContent = state.board.isPublished ? "公開中" : "非公開";
   ownerTools.hidden = !isOwner();
-  addPageButton.disabled = !isOwner();
-  lockToggle.checked = page.lockEdits;
-  hideToggle.checked = page.hideOthers;
+  if (!state.endsAtDirty) {
+    endsAtInput.value = dateTimeLocalValue(state.board.publishEndsAt);
+  }
+  endEventButton.disabled = !state.board.isPublished;
+  endEventButton.hidden = !state.board.isPublished;
+  bubbleInput.disabled = false;
+  bubbleSubmitButton.disabled = false;
+  bubbleInput.placeholder = "ふきだしを書く";
 
-  pageList.replaceChildren(...state.board.pages.map((item) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `page-item${item.id === page.id ? " active" : ""}`;
-    button.textContent = item.title;
-    button.addEventListener("click", () => selectPage(item.id));
-    return button;
-  }));
-
-  canvas.replaceChildren(...page.bubbles.map((bubble) => renderBubble(page, bubble)));
+  canvas.replaceChildren(...state.board.bubbles.map((bubble) => renderBubble(bubble)));
 }
 
-function renderBubble(page, bubble) {
+function renderBubble(bubble) {
   const node = $("#bubbleTemplate").content.firstElementChild.cloneNode(true);
   node.dataset.id = bubble.id;
   node.style.left = `${bubble.x}%`;
   node.style.top = `${bubble.y}%`;
   node.classList.toggle("mine", bubble.authorId === state.userId);
-  node.classList.toggle("hidden-bubble", page.hideOthers && !isOwner() && bubble.authorId !== state.userId);
-  node.querySelector("p").textContent = page.hideOthers && !isOwner() && bubble.authorId !== state.userId ? "非表示" : bubble.text;
-  node.querySelector("span").textContent = bubble.author || "匿名";
+  node.querySelector("p").textContent = bubble.text;
+  node.querySelector("strong").textContent = bubble.author || "匿名";
+  const time = node.querySelector("time");
+  time.dateTime = bubble.createdAt || "";
+  time.textContent = formatDateTime(bubble.createdAt);
   const like = node.querySelector("button");
   like.textContent = `いいね ${bubble.likes.length}`;
   like.addEventListener("click", (event) => {
     event.stopPropagation();
-    likeBubble(page.id, bubble.id);
+    likeBubble(bubble.id);
   });
-  node.addEventListener("dblclick", () => editBubble(page, bubble));
-  node.addEventListener("pointerdown", (event) => startDrag(event, node, page, bubble));
+  node.addEventListener("dblclick", () => editBubble(bubble));
+  node.addEventListener("pointerdown", (event) => startDrag(event, node, bubble));
   return node;
 }
 
-async function loadBoard(id) {
-  state.board = await api(`/api/boards/${id}`);
-  state.currentPageId = state.board.currentPageId;
-  setBoardUrl(state.board);
-  setStatus("接続中");
+function useBoard(board) {
+  if (state.board?.id !== board.id) {
+    state.endsAtDirty = false;
+    if (isAdminMode && !board.publishEndsAt) {
+      board.publishEndsAt = defaultPublishEndsAt();
+      state.endsAtDirty = true;
+    }
+  }
+  state.board = board;
   render();
+}
+
+async function loadBoard(id) {
+  const board = await api(`/api/boards/${id}`, { ownerKey: ownerKeyFor(id) });
+  useBoard(board);
+  setBoardUrl(board);
+  setStatus(board.isPublished ? "公開中" : "非公開");
+  startPolling(refreshBoard);
+}
+
+async function loadPublicBoard() {
+  if (!publicToken) return showNotFound();
+  useBoard(await api(`/api/public/${publicToken}`));
+  setStatus("公開中・自動更新");
+}
+
+function startPolling(callback) {
   clearInterval(state.pollTimer);
-  state.pollTimer = setInterval(refreshBoard, 1600);
+  state.pollTimer = setInterval(callback, 1200);
 }
 
 async function refreshBoard() {
-  if (!state.board) return;
+  if (!state.board || state.drag) return;
   try {
-    const board = await api(`/api/boards/${state.board.id}`);
-    state.board = board;
-    if (!board.pages.some((page) => page.id === state.currentPageId)) {
-      state.currentPageId = board.currentPageId;
-    }
-    render();
+    const path = isAdminMode
+      ? `/api/boards/${state.board.id}`
+      : `/api/public/${publicToken}`;
+    useBoard(await api(path));
   } catch {
+    if (!isAdminMode) return showNotFound();
     setStatus("ボードを読み込めません");
-  }
-}
-
-async function selectPage(pageId) {
-  state.currentPageId = pageId;
-  render();
-  if (isOwner()) {
-    state.board = await api(`/api/boards/${state.board.id}/page`, {
-      method: "PATCH",
-      body: userBody({ pageId, current: true })
-    });
   }
 }
 
@@ -169,65 +274,81 @@ function userBody(extra = {}) {
   return {
     userId: state.userId,
     name: state.name || "匿名",
-    ownerKey: state.guestMode ? "" : state.ownerKey,
+    ownerKey: ownerKeyFor(),
     ...extra
   };
 }
 
 async function addBubble(text) {
-  const rect = canvas.getBoundingClientRect();
   const x = 12 + Math.random() * 54;
   const y = 12 + Math.random() * 48;
-  state.board = await api(`/api/boards/${state.board.id}/bubbles`, {
+  const path = isAdminMode
+    ? `/api/boards/${state.board.id}/bubbles`
+    : `/api/public/${publicToken}/bubbles`;
+  state.board = await api(path, {
     method: "POST",
-    body: userBody({ pageId: activePage().id, text, x, y, width: rect.width })
+    body: userBody({ text, x, y })
   });
   render();
 }
 
-async function likeBubble(pageId, bubbleId) {
-  state.board = await api(`/api/boards/${state.board.id}/like`, {
+async function likeBubble(bubbleId) {
+  const path = isAdminMode
+    ? `/api/boards/${state.board.id}/like`
+    : `/api/public/${publicToken}/like`;
+  state.board = await api(path, {
     method: "POST",
-    body: userBody({ pageId, bubbleId })
+    body: userBody({ bubbleId })
   });
   render();
 }
 
-async function editBubble(page, bubble) {
-  const allowed = isOwner() || !page.lockEdits || bubble.authorId === state.userId;
+async function editBubble(bubble) {
+  const allowed = isOwner() || bubble.authorId === state.userId;
   if (!allowed) return;
   const text = prompt("ふきだしを編集", bubble.text);
   if (!text) return;
-  state.board = await api(`/api/boards/${state.board.id}/bubbles`, {
+  const path = isAdminMode
+    ? `/api/boards/${state.board.id}/bubbles`
+    : `/api/public/${publicToken}/bubbles`;
+  state.board = await api(path, {
     method: "PATCH",
-    body: userBody({ pageId: page.id, bubbleId: bubble.id, text })
+    body: userBody({ bubbleId: bubble.id, text })
   });
   render();
 }
 
-function startDrag(event, node, page, bubble) {
-  const allowed = isOwner() || !page.lockEdits || bubble.authorId === state.userId;
+function startDrag(event, node, bubble) {
+  const allowed = isOwner() || bubble.authorId === state.userId;
   if (!allowed) return;
   event.preventDefault();
   node.setPointerCapture(event.pointerId);
   const rect = canvas.getBoundingClientRect();
   state.drag = {
     node,
-    pageId: page.id,
     bubbleId: bubble.id,
     pointerId: event.pointerId,
     offsetX: event.clientX - node.getBoundingClientRect().left,
     offsetY: event.clientY - node.getBoundingClientRect().top,
-    rect
+    rect,
+    maxX: Math.max(0, rect.width - node.offsetWidth),
+    maxY: Math.max(0, rect.height - node.offsetHeight)
   };
+  node.classList.add("dragging");
 }
 
 canvas.addEventListener("pointermove", (event) => {
   if (!state.drag) return;
-  const x = ((event.clientX - state.drag.rect.left - state.drag.offsetX) / state.drag.rect.width) * 100;
-  const y = ((event.clientY - state.drag.rect.top - state.drag.offsetY) / state.drag.rect.height) * 100;
-  state.drag.node.style.left = `${Math.max(2, Math.min(82, x))}%`;
-  state.drag.node.style.top = `${Math.max(5, Math.min(82, y))}%`;
+  const left = Math.max(0, Math.min(
+    state.drag.maxX,
+    event.clientX - state.drag.rect.left - state.drag.offsetX
+  ));
+  const top = Math.max(0, Math.min(
+    state.drag.maxY,
+    event.clientY - state.drag.rect.top - state.drag.offsetY
+  ));
+  state.drag.node.style.left = `${(left / state.drag.rect.width) * 100}%`;
+  state.drag.node.style.top = `${(top / state.drag.rect.height) * 100}%`;
 });
 
 canvas.addEventListener("pointerup", async (event) => {
@@ -236,10 +357,21 @@ canvas.addEventListener("pointerup", async (event) => {
   const y = Number.parseFloat(state.drag.node.style.top);
   const drag = state.drag;
   state.drag = null;
-  state.board = await api(`/api/boards/${state.board.id}/bubbles`, {
+  drag.node.classList.remove("dragging");
+  const path = isAdminMode
+    ? `/api/boards/${state.board.id}/bubbles`
+    : `/api/public/${publicToken}/bubbles`;
+  state.board = await api(path, {
     method: "PATCH",
-    body: userBody({ pageId: drag.pageId, bubbleId: drag.bubbleId, x, y })
+    body: userBody({ bubbleId: drag.bubbleId, x, y })
   });
+  render();
+});
+
+canvas.addEventListener("pointercancel", () => {
+  if (!state.drag) return;
+  state.drag.node.classList.remove("dragging");
+  state.drag = null;
   render();
 });
 
@@ -253,23 +385,25 @@ createForm.addEventListener("submit", async (event) => {
     method: "POST",
     body: {
       title: form.get("title"),
-      ownerName: state.name
+      ownerName: state.name,
+      publishEndsAt: isoFromLocalValue(String(form.get("publishEndsAt") || ""))
     }
   });
-  state.ownerKey = board.ownerKey;
-  localStorage.setItem("myfukidashi:ownerKey", state.ownerKey);
-  state.board = board;
-  state.currentPageId = board.currentPageId;
+  rememberOwner(board);
+  useBoard(board);
   setBoardUrl(board);
-  render();
-  clearInterval(state.pollTimer);
-  state.pollTimer = setInterval(refreshBoard, 1600);
+  setStatus("作成しました。公開すると参加URLが生成されます");
+  startPolling(refreshBoard);
 });
 
 bubbleForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const input = new FormData(bubbleForm).get("text");
-  const text = String(input || "").trim();
+  if (!state.name) {
+    setStatus("表示名を入力してください");
+    nameInput.focus();
+    return;
+  }
+  const text = String(new FormData(bubbleForm).get("text") || "").trim();
   if (!text) return;
   bubbleForm.reset();
   await addBubble(text);
@@ -280,66 +414,119 @@ nameInput.addEventListener("input", () => {
   localStorage.setItem("myfukidashi:name", state.name);
 });
 
-addPageButton.addEventListener("click", async () => {
-  const title = prompt("ページ名", `ページ ${state.board.pages.length + 1}`);
-  if (!title) return;
-  state.board = await api(`/api/boards/${state.board.id}/pages`, {
-    method: "POST",
-    body: userBody({ title })
-  });
-  state.currentPageId = state.board.currentPageId;
-  render();
-});
-
-lockToggle.addEventListener("change", updatePageSettings);
-hideToggle.addEventListener("change", updatePageSettings);
-
-async function updatePageSettings() {
-  state.board = await api(`/api/boards/${state.board.id}/page`, {
-    method: "PATCH",
-    body: userBody({
-      pageId: activePage().id,
-      lockEdits: lockToggle.checked,
-      hideOthers: hideToggle.checked
-    })
-  });
-  render();
-}
-
-gatherButton.addEventListener("click", async () => {
-  state.board = await api(`/api/boards/${state.board.id}/page`, {
-    method: "PATCH",
-    body: userBody({ pageId: activePage().id, current: true })
-  });
-  render();
+endsAtInput.addEventListener("input", () => {
+  state.endsAtDirty = true;
+  setStatus("公開終了日時は未保存です");
 });
 
 copyLinkButton.addEventListener("click", async () => {
-  const url = shareUrl();
+  const url = studentUrl();
   try {
     if (!navigator.clipboard) throw new Error("clipboard unavailable");
     await navigator.clipboard.writeText(url);
-    setStatus("共有リンクをコピーしました");
+    setStatus("生徒用URLをコピーしました");
   } catch {
-    prompt("共有リンクをコピーしてください", url);
-    setStatus("共有リンクを表示しました");
+    prompt("生徒用URLをコピーしてください", url);
   }
 });
 
-newBoardButton.addEventListener("click", () => {
-  localStorage.removeItem("myfukidashi:ownerKey");
-  location.href = "/";
+publishButton.addEventListener("click", async () => {
+  const publishEndsAt = isoFromLocalValue(endsAtInput.value) || defaultPublishEndsAt();
+  state.board = await api("/api/publish", {
+    method: "POST",
+    body: userBody({ boardId: state.board.id, publishEndsAt })
+  });
+  state.endsAtDirty = false;
+  setStatus("公開URLを生成しました");
+  render();
 });
 
-const initialBoard = boardIdFromUrl();
-updateTopActions();
-if (initialBoard) {
+saveEndsAtButton.addEventListener("click", async () => {
+  const value = endsAtInput.value;
+  saveEndsAtButton.disabled = true;
+  try {
+    state.board = await api(`/api/boards/${state.board.id}/event`, {
+      method: "PATCH",
+      body: userBody({ publishEndsAt: isoFromLocalValue(value) })
+    });
+    state.endsAtDirty = false;
+    setStatus(state.board.publishEndsAt ? "公開終了日時を保存しました" : "公開終了日時を解除しました");
+    render();
+  } catch {
+    setStatus("公開終了日時を保存できませんでした");
+  } finally {
+    saveEndsAtButton.disabled = false;
+  }
+});
+
+endEventButton.addEventListener("click", async () => {
+  if (!confirm(`「${state.board.title}」の公開を終了しますか？ 公開URLはNot Foundになります。`)) return;
+  state.board = await api(`/api/boards/${state.board.id}/event`, {
+    method: "PATCH",
+    body: userBody({ endPublishNow: true })
+  });
+  setStatus("公開を終了しました");
+  render();
+});
+
+newBoardButton.addEventListener("click", () => {
+  location.href = "/admin";
+});
+
+async function renderKnownBoards() {
+  const boards = (await Promise.all(Object.keys(ownerKeys).map(async (id) => {
+    try {
+      return await api(`/api/boards/${id}`, { ownerKey: ownerKeyFor(id) });
+    } catch {
+      return null;
+    }
+  }))).filter(Boolean).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  recentBoards.hidden = boards.length === 0;
+  recentBoardList.replaceChildren(...boards.map((board) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "recent-board";
+    const title = document.createElement("strong");
+    title.textContent = board.title;
+    const detail = document.createElement("span");
+    detail.textContent = board.isPublished ? "公開中" : "非公開";
+    button.append(title, detail);
+    button.addEventListener("click", () => {
+      location.href = `/admin?b=${encodeURIComponent(board.id)}`;
+    });
+    return button;
+  }));
+}
+
+async function initialize() {
+  if (!isAdminMode) {
+    welcome.hidden = true;
+    try {
+      await loadPublicBoard();
+      startPolling(refreshBoard);
+    } catch {
+      showNotFound();
+    }
+    return;
+  }
+
+  const initialBoard = boardIdFromUrl();
+  if (!initialBoard) {
+    setStatus("管理者ページ");
+    updateTopActions();
+    await renderKnownBoards();
+    return;
+  }
+
   welcome.hidden = true;
-  boardView.hidden = true;
   setStatus("ボードを読み込み中");
-  loadBoard(initialBoard).catch(() => {
+  try {
+    await loadBoard(initialBoard);
+  } catch {
     setStatus("ボードが見つかりません");
     welcome.hidden = false;
-    updateTopActions();
-  });
+  }
 }
+
+initialize();
