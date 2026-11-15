@@ -14,6 +14,7 @@
           <p id="status">イベントごとの共有ボード</p>
         </div>
         <div class="top-actions">
+          <button id="displayModeButton" class="ghost" type="button" hidden>会場表示</button>
           <button id="newBoardButton" type="button" hidden>新規ボード</button>
         </div>
       </header>
@@ -89,7 +90,7 @@
             <button id="copyLinkButton" type="button" hidden>生徒用URLをコピー</button>
             <div id="qrPanel" class="qr-panel" hidden>
               <img id="qrCode" alt="生徒用URLのQRコード">
-              <p>生徒はこのQRコードから参加できます</p>
+              <p>スマホで読み取って参加<br>親御さんもニンジャも投稿できます</p>
             </div>
           </div>
           <div class="identity">
@@ -137,6 +138,7 @@
       </article>
     </template>
 
+    <script src="/qrcode.min.js"></script>
     <script src="/app.js" type="module"></script>
   </body>
 </html>

@@ -483,3 +483,18 @@ input {
     max-width: 72vw;
   }
 }
+
+/* 会場のスクリーンから読み取れる大きさでQRを表示する。 */
+@media (min-width: 761px) {
+  .display-mode .board-view { grid-template-columns: minmax(300px, 28vw) 1fr; }
+  .display-mode .sidebar { padding: 24px; }
+  .display-mode .qr-panel { padding: 16px; }
+  .display-mode .qr-panel img { max-width: 420px; margin: auto; }
+  .display-mode .qr-panel p { font-size: 18px; }
+  .display-mode .identity,
+  .display-mode .owner-tools,
+  .display-mode #publishPanel > button,
+  .display-mode .composer,
+  .display-mode #newBoardButton { display: none; }
+  .display-mode .bubble p { font-size: 22px; }
+}

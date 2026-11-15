@@ -48,6 +48,7 @@ const publishButton = $("#publishButton");
 const qrPanel = $("#qrPanel");
 const qrCode = $("#qrCode");
 const newBoardButton = $("#newBoardButton");
+const displayModeButton = $("#displayModeButton");
 const recentBoards = $("#recentBoards");
 const recentBoardList = $("#recentBoardList");
 const endsAtInput = $("#endsAtInput");
@@ -116,6 +117,8 @@ function setStatus(text) {
 }
 
 function updateTopActions() {
+  displayModeButton.hidden = !isAdminMode || !state.board?.isPublished;
+  if (displayModeButton.hidden) document.body.classList.remove("display-mode");
   publishPanel.hidden = !isAdminMode || !isOwner();
   publishStatus.textContent = state.board?.isPublished ? "公開中" : "非公開";
   publishStatus.classList.toggle("published", Boolean(state.board?.isPublished));
@@ -133,14 +136,22 @@ function updateTopActions() {
   newBoardButton.hidden = !isAdminMode || !state.board;
 }
 
+displayModeButton.addEventListener("click", () => {
+  const enabled = document.body.classList.toggle("display-mode");
+  displayModeButton.textContent = enabled ? "通常表示に戻る" : "会場表示";
+  displayModeButton.setAttribute("aria-pressed", String(enabled));
+});
+
 async function loadQrCode() {
   if (!state.board?.isPublished || qrCode.dataset.publicToken === state.board.publicToken) return;
   try {
     if (state.qrObjectUrl) URL.revokeObjectURL(state.qrObjectUrl);
-    const response = await fetchWithOwner(`/api/qr/${state.board.id}`);
-    if (!response.ok) throw new Error("QR request failed");
-    state.qrObjectUrl = URL.createObjectURL(await response.blob());
-    qrCode.src = state.qrObjectUrl;
+    qrCode.src = await QRCode.toDataURL(studentUrl(), {
+      width: 840,
+      margin: 3,
+      errorCorrectionLevel: "M",
+      color: { dark: "#202124", light: "#ffffff" }
+    });
     qrCode.dataset.publicToken = state.board.publicToken;
   } catch {
     setStatus("QRコードを生成できません");
@@ -500,7 +511,17 @@ async function renderKnownBoards() {
 }
 
 async function initialize() {
+  if (document.querySelector('meta[name="cloud-app"]')) {
+    try {
+      const session = await api("/api/session", { ownerKey: "" });
+      state.userId = session.userId;
+    } catch {
+      setStatus("接続できません。ページを再読み込みしてください");
+      return;
+    }
+  }
   if (!isAdminMode) {
+    $(".identity h3").textContent = "あなたの表示名";
     welcome.hidden = true;
     try {
       await loadPublicBoard();

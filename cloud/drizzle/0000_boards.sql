@@ -1,0 +1,6 @@
+CREATE TABLE boards (
+  id TEXT PRIMARY KEY NOT NULL,
+  public_token TEXT UNIQUE,
+  data TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 0
+);
