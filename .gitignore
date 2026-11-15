@@ -1,3 +1,7 @@
 .DS_Store
 data/
 node_modules/
+config/local.php
+config/*.local.php
+backups/
+artifacts/

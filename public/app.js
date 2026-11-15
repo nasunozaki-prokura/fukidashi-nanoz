@@ -502,7 +502,7 @@ async function renderKnownBoards() {
 }
 
 async function initialize() {
-  if (document.querySelector('meta[name="cloud-app"]')) {
+  if (document.querySelector('meta[name="cloud-app"], meta[name="server-session"]')) {
     try {
       const session = await api("/api/session", { ownerKey: "" });
       state.userId = session.userId;

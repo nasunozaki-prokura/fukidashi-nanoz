@@ -1,8 +1,16 @@
 Options -Indexes
+DirectoryIndex api.php
 RewriteEngine On
+RewriteRule ^(?:config|php|backups|data|\.git)(?:/|$) - [F,L,NC]
 RewriteRule ^api(?:/.*)?$ api.php [QSA,L]
 RewriteRule ^join/[^/]+/?$ api.php [QSA,L]
-RewriteRule ^admin/?$ index.html [L]
+RewriteRule ^admin$ api.php [QSA,L]
+RewriteRule ^admin/$ /admin [R=308,L]
+RewriteRule ^$ api.php [QSA,L]
+
+<FilesMatch "(?i)\.(?:sql|sqlite3?|db|bak|log|env|ini)$">
+  Require all denied
+</FilesMatch>
 
 <FilesMatch "^\.">
   Require all denied

@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test:php": "node --test tests/php-api.test.mjs",
+    "package:colorfulbox": "node scripts/package-colorfulbox.mjs"
   },
   "engines": {
     "node": ">=20"
