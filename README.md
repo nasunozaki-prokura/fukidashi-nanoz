@@ -19,8 +19,8 @@ Node.js 20以上が動作する公開サーバーにこのリポジトリを配�
 MBPにNode.js 20以上を入れて、このリポジトリをcloneします。
 
 ```sh
-git clone https://github.com/mame-n/myfukidashi.git
-cd myfukidashi
+git clone https://github.com/nasunozaki-prokura/fukidashi-nanoz.git
+cd fukidashi-nanoz
 npm ci
 ```
 
